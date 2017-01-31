@@ -1,5 +1,5 @@
 package neat
-
+ 
 case class Neat(population: List[Individual], inno: InnovationTracker, species: List[Species])(implicit params: Parameters, experiment: Experiment) {
 	
 	lazy val best = population.maxBy(_.fitness)
@@ -8,10 +8,15 @@ case class Neat(population: List[Individual], inno: InnovationTracker, species: 
 	lazy val avgSpeciesAge = species.map(_.age).sum * 1.0 / species.length
 	
 	def step(): Neat = {
-		val newSpecies = speciate(population, species.map(_.empty)).filterNot(_.individuals.isEmpty).filter(_.age < 15)
+		println("speciation...")
+		val newSpecies = speciate(population, species.map(_.empty)).filterNot(_.individuals.isEmpty).filter(_.dropoffAge < 15)
+		println("optimizing params...")
 		implicit val newParams = params changeCompatiblityModifier newSpecies.length
+		println("breeding...")
 		val offspring = breed(newSpecies)
+		println("mutating...")
 		val mutated = mutate(offspring, inno)(newParams)
+		println("done!")
 		Neat(mutated, inno, newSpecies)(newParams, experiment)
 	}
 	
@@ -49,13 +54,14 @@ case class Neat(population: List[Individual], inno: InnovationTracker, species: 
 						insert(i, tail) map (head :: _)
 			}
 			
-			insert(i, s) getOrElse (Species(i, List(i)) :: s)
+			insert(i, s) getOrElse {Species(i, List(i)) :: s}
 		}
 	}
 }
 
 object Neat {
-	def apply(size: Int)(implicit parameters: Parameters, experiment: Experiment): Neat = Neat(randomPopulation(size), InnovationTracker(), List())
+	def apply(size: Int)(implicit parameters: Parameters, experiment: Experiment): Neat =
+		Neat(randomPopulation(size), InnovationTracker(), List())
 	private def randomPopulation(size: Int)(implicit parameters: Parameters, experiment: Experiment): List[Individual] = {
 		if(size <= 0) Nil
 		else Individual() :: randomPopulation(size - 1)

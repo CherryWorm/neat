@@ -1,7 +1,7 @@
 import neat.{Neat, Parameters}
 import util._
 
-object NeatTest extends App {
+object NeatTest {
 	implicit val params = Parameters()
 	implicit val experiment = TestExperiment()
 	val neat = Neat(100).step()

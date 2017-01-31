@@ -37,7 +37,7 @@ case class NeuralNetwork(ind: Individual)(implicit params: Parameters, experimen
 		}
 		for(node <- nodes) {
 			for(edge <- node.edges) {
-				nodesMap(edge.out).newActivation += node.activation * edge.weight
+				nodesMap(edge.out.id).newActivation += node.activation * edge.weight
 			}
 		}
 		for(node <- nodes) {

@@ -1,26 +1,31 @@
 package neat
 
-import scala.util.Random
 import util._
+
+import scala.annotation.tailrec
 
 case class ConnectionGene(innovation: Int, in: NodeGene, out: NodeGene, enabled: Boolean, weight: Double)
 
 case class NodeGene(id: Int)
 
-case class Individual(conn: List[ConnectionGene], nodes: List[NodeGene])(implicit experiment: Experiment) {
+case class Individual(conn: List[ConnectionGene], nodes: List[NodeGene])(implicit params: Parameters, experiment: Experiment) {
 	
-	def this(conn: List[ConnectionGene])(implicit experiment: Experiment) = {
+	def this(conn: List[ConnectionGene])(implicit params: Parameters, experiment: Experiment) = {
 		this(conn, conn.flatMap(i => List(i.in, i.out)).distinct)
 	}
 	
-	lazy val fitness = experiment evaluate this
-	lazy val sorted = conn.sortBy(_.innovation)
+	lazy val fitness: Double = experiment evaluate this
+	lazy val sorted: List[ConnectionGene] = conn.sortBy(_.innovation)
 	
-	def flipEdge(n: Int) = {
+	def constructNetwork(): NeuralNetwork = {
+		NeuralNetwork(this)
+	}
+	
+	def flipEdge(n: Int): List[ConnectionGene] = {
 		conn find(_.innovation == n) map (i => i.copy(enabled = !i.enabled) :: (conn filter (_.innovation != n))) getOrElse conn
 	}
 	
-	def mutate(innovationTracker: InnovationTracker)(implicit params: Parameters): (Individual, InnovationTracker) = {
+	def mutate(innovationTracker: InnovationTracker): (Individual, InnovationTracker) = {
 		
 		val insertNodes: (Individual, InnovationTracker) => (Individual, InnovationTracker) = { case (i, tracker) =>
 			def findEdge(n: Int): Option[ConnectionGene] = n match {
@@ -80,7 +85,7 @@ case class Individual(conn: List[ConnectionGene], nodes: List[NodeGene])(implici
 		combined (this, innovationTracker)
 	}
 	
-	def breed(o: Individual)(implicit params: Parameters): Individual = {
+	def breed(o: Individual): Individual = {
 		val fitter = fitness > o.fitness
 		def h(i: List[ConnectionGene], j: List[ConnectionGene]): List[ConnectionGene] = (i, j) match {
 			case (i, Nil) => if(fitter) i else Nil
@@ -107,26 +112,21 @@ case class Individual(conn: List[ConnectionGene], nodes: List[NodeGene])(implici
 		Individual(h(sorted, o.sorted), nodes.distinct)
 	}
 	
-	def dist(o: Individual)(implicit params: Parameters): Double = {
-		def h(i: List[ConnectionGene], j: List[ConnectionGene]): (Int, Int, Double) = (i, j) match {
-			case (Nil, rest) => (rest.length, 0, 0)
-			case (rest, Nil) => (rest.length, 0, 0)
-			case (ihead :: itail, jhead :: jtail) =>
+	def dist(o: Individual): Double = {
+		@tailrec
+		def h(i: List[ConnectionGene], j: List[ConnectionGene], acc: (Int, Int, Double)): (Int, Int, Double) = (i, j, acc) match {
+			case (Nil, rest, (n, m, o)) => (n + rest.length, m, o)
+			case (rest, Nil, (n, m, o)) => (n + rest.length, m, o)
+			case (ihead :: itail, jhead :: jtail, (n, m, o)) =>
 				if (ihead.innovation < jhead.innovation)
-					h(itail, j) match {
-						case (n, m, o) => (n + 1, m, o)
-					}
+					h(itail, j, (n + 1, m, o))
 				else if (ihead.innovation > jhead.innovation)
-					h(i, jtail) match {
-						case (n, m, o) => (n + 1, m, o)
-					}
+					h(i, jtail, (n + 1, m, o))
 				else
-					h(itail, jtail) match {
-						case (n, m, o) => (n, m + 1, o + (ihead.weight - jhead.weight).abs)
-					}
+					h(itail, jtail, (n, m + 1, o + (ihead.weight - jhead.weight).abs))
 		}
 		
-		val (disjoint, matching, wd) = h(sorted, o.sorted)
+		val (disjoint, matching, wd) = h(sorted, o.sorted, (0, 0, 0))
 		(disjoint * 1.0 / conn.length.max(o.conn.length)) * params.disjointCoefficient +
 			(if (matching != 0) wd / matching else 0) * params.weightDifferenceCoefficient
 	}
@@ -135,7 +135,7 @@ case class Individual(conn: List[ConnectionGene], nodes: List[NodeGene])(implici
 
 object Individual {
 	def apply()(implicit params: Parameters, experiment: Experiment): Individual = {
-		val combs = for(i <- experiment.inputRange; o <- experiment.sensorRange) yield (i, o)
+		val combs = for(i <- experiment.sensorRange; o <- experiment.outputRange) yield (i, o)
 		val genome = combs.zipWithIndex.map {
 			case ((i, o), n) => ConnectionGene(n, NodeGene(i), NodeGene(o), true, params.random.nextDouble())
 		}
